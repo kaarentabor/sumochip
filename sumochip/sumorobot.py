@@ -2,6 +2,8 @@ from __future__ import print_function
 
 import os
 import sys
+import pid
+import traceback
 from axp209 import AXP209
 from time import sleep
 from threading import Thread
@@ -50,14 +52,14 @@ class AttributeDict(dict):
 class ChipIOMotor(object):
     _speed = 0
 
-    def __init__(self, pin, freq=500, duty_min=49.0, duty_max=90.0, stop_on_zero=False):
+    def __init__(self, pin, freq=50, duty_min=5, duty_max=10, stop_on_zero=False):
         self.pin = pin
         self.freq = freq
         self.duty_min = duty_min
         self.duty_max = duty_max
         self.stop_on_zero = stop_on_zero
         sleep(0.1)
-        PWM.start(pin, 0, 500)
+        PWM.start(pin, 0, freq)
 
     @property
     def speed(self):
@@ -565,12 +567,27 @@ def self_test(s):
 
         sleep(0.01)
 
+def lock():
+    lock = pid.PidFile(pidname="sumochip")
+    try:
+        lock.create()
+    except (pid.PidFileAlreadyRunningError, pid.PidFileAlreadyLockedError) as err:
+        print("There is another instance of sumorobot software running")
+        print("Please make sure that sumochip web interface is not running!")
+        print("You can stop the web interface with this command:\n\n\t systemctl stop sumochip\n")
+        exit(1)
+    except pid.PidFileError as err:
+        traceback.print_exc()
+    return lock
+
 def main():
+    l = lock()
     try:
         s = Sumorobot()
         self_test(s)
     except KeyboardInterrupt:
         print("\nGraceful shutdown (Leds and sensors off)")
+        l.close()
         s.sensor_power = False
         s.blue_led.value = 1
         s.red_led.value = 1
